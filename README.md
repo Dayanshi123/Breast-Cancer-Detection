@@ -56,8 +56,8 @@ Let's get your environment ready! Follow these steps:
 
 1. **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/breast-cancer-classification.git
-    cd breast-cancer-classification
+    git clone https://github.com/Dayanshi123/Breast-Cancer-Detection.git
+    cd Breast-Cancer-Detection
     ```
 
 2. **Install dependencies**:

@@ -1,5 +1,3 @@
-Here's an updated version of the `README.md`, replacing **Grad-CAM** with **LIME** (Local Interpretable Model-agnostic Explanations) for model interpretability:
-
 ---
 
 # Breast Cancer Classification with ResNet50 🧑‍⚕️💻

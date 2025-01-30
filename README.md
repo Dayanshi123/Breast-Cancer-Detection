@@ -76,11 +76,33 @@ Let's get your environment ready! Follow these steps:
 Training your model is simple! Run the script below to start the training process.
 
 ```bash
-python train_model.py
+train_ds = keras.utils.image_dataset_from_directory(
+    directory = '/content/drive/MyDrive/Dataset/1 1 BreakHis_Data-200x/train',
+    labels='inferred',
+    label_mode = 'int',
+    batch_size=32,
+    image_size=(150,150)
+)
+
+validation_ds = keras.utils.image_dataset_from_directory(
+    directory = '/content/drive/MyDrive/Dataset/1 1 BreakHis_Data-200x/val',
+    labels='inferred',
+    label_mode = 'int',
+    batch_size=32,
+    image_size=(150,150)
+)
+
+train_ds = train_ds.map(lambda x, y: (preprocess_input(x), y))
+validation_ds = validation_ds.map(lambda x, y: (preprocess_input(x), y))
+
+early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-6)
+
+history = model.fit(train_ds, epochs=150, validation_data=validation_ds, callbacks=[early_stopping, reduce_lr])
 ```
 
 - **Training Configuration**: The model will train on the BreakHis dataset, utilizing data augmentation and dropout for regularization.
-- **Output**: The best model weights will be saved in `model_weights.h5`.
+- **Output**: The best model weights will be saved in `trainedModel.h5`.
 
 ---
 
@@ -89,7 +111,31 @@ python train_model.py
 After training, you can evaluate the model's performance with:
 
 ```bash
-python evaluate_model.py
+# Evaluate the model on the validation set
+val_labels = []
+val_preds = []
+
+for images, labels in validation_ds:
+    preds = model.predict(images)
+    val_labels.extend(labels.numpy())
+    val_preds.extend(np.argmax(preds, axis=1))
+
+# Generate classification report
+report = classification_report(val_labels, val_preds, target_names=cm_labels)
+print(report)
+TP = np.diag(cm)
+FP = np.sum(cm, axis=0) - TP
+FN = np.sum(cm, axis=1) - TP
+TN = np.sum(cm) - (FP + FN + TP)
+
+import pandas as pd
+metrics_df = pd.DataFrame({
+    'Class': cm_labels,
+    'TP': TP,
+    'TN': TN,
+    'FP': FP,
+    'FN': FN
+})
 ```
 
 This will display:
@@ -108,21 +154,52 @@ LIME perturbs the input image and uses a surrogate interpretable model (like a d
 
 ### Example Code for LIME:
 ```python
-from lime import lime_image
-from sklearn.linear_model import LogisticRegression
+import tensorflow as tf
+from tensorflow.keras.utils import load_img
+from tensorflow.keras.utils import img_to_array  # Make sure to import img_to_array
+from tensorflow.keras.applications.vgg16 import preprocess_input
+from tensorflow.keras import models
 import numpy as np
+# ... (rest of the code)
 
-# Create an explainer
+# Create a LIME explainer
 explainer = lime_image.LimeImageExplainer()
 
-# Choose an image for explanation
-image = test_image[0]
+# Define a prediction function for LIME
+def predict_fn(images):
+    images = np.array([preprocess_input(img_to_array(image)) for image in images]) #img_to_array should be accessible here as well.
+    return model.predict(images)
 
-# Explain the model's prediction on this image
-explanation = explainer.explain_instance(image, model.predict, top_labels=5, hide_color=0, num_samples=1000)
+# Generate LIME explanation
+explanation = explainer.explain_instance(
+    img_to_array(load_img(image_path, target_size=(150, 150))), # img_to_array call
+    predict_fn,
+    top_labels=4,
+    num_samples=1000,
+    batch_size=10
+)
 
-# Visualize the explanation
-explanation.show_in_browser()
+
+temp, mask = explanation.get_image_and_mask(
+    explanation.top_labels[0],
+    positive_only=True,
+    num_features=10,
+    hide_rest=True
+)
+img_boundry = mark_boundaries(temp / 255.0, mask)
+plt.figure(figsize=(10, 5))
+
+# Original image
+plt.subplot(1, 2, 1)
+plt.imshow(load_img(image_path, target_size=(150, 150)))
+plt.title(f"True Class: {predicted_class}")
+
+# LIME explanation
+plt.subplot(1, 2, 2)
+plt.imshow(img_boundry)
+plt.title(f"Predicted Class: {predicted_class}")
+
+plt.show()
 ```
 
 This code will visualize which regions of the image the model focused on for making predictions, helping clinicians interpret the model's decisions.
@@ -133,10 +210,13 @@ This code will visualize which regions of the image the model focused on for mak
 
 Here’s how the model performed on the test set:
 
-- **Accuracy**: 97%
-- **Precision**: 88%
-- **Recall**: 92%
-- **F1-Score**: 90%
+-                  precision    recall  f1-score   support
+-  Benign              0.98      0.95      0.97        60
+-  Malignant           0.96      0.99      0.98        80
+-  accuracy                                0.97       140
+-  macro avg           0.97      0.97      0.97       140
+-  weighted avg        0.97      0.97      0.97       140
+
 
 These numbers show how well the model generalizes to new, unseen data. The **LIME** explanations confirm that the model is focusing on relevant areas of the tissue samples, ensuring trust and transparency.
 
